@@ -241,6 +241,28 @@ CREATE TABLE IF NOT EXISTS device_calibration (
     void_request_hash TEXT                           -- 作废请求指纹（同证明号作废幂等/冲突）
 );
 
+-- 运输测温异常项处置意见（运输质控）：异常项来自可信测温复核（超温点/缺测区间），
+-- 每项以稳定标识 + 证据摘要定位。仅接受当前仍存在且摘要一致的异常项；同一异常项在
+-- 同一证据摘要下只接受一次处置（唯一键兜底）；同处置单号同内容重试幂等、异内容冲突。
+-- 证据变化（读数补录/证明补录或作废/保管链纠错）后旧意见不删除，查询时标为失效
+-- （superseded）永久可查，新摘要可重新处置。处置只新增记录：不改原始读数、既有可信
+-- 复核、保管链版本或已封存案卷。
+CREATE TABLE IF NOT EXISTS temp_disposition (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    disposition_no  TEXT NOT NULL UNIQUE,              -- 全局唯一处置单号（同号重试幂等/异内容冲突）
+    sample_id       INTEGER NOT NULL REFERENCES sample(id),
+    sample_code     TEXT NOT NULL,                     -- 提交时样本编号（留痕）
+    item_id         TEXT NOT NULL,                     -- 异常项稳定标识（OOR-读数号 / GAP-前读数号-后读数号）
+    item_digest     TEXT NOT NULL,                     -- 处置时所见异常项证据摘要（SHA-256）
+    operator        TEXT NOT NULL,                     -- 处置人
+    verdict         TEXT NOT NULL CHECK (verdict IN ('accepted','excluded')), -- 认可/排除异常
+    reason          TEXT NOT NULL,                     -- 处置理由（认可或排除均须填写）
+    item_snapshot_json TEXT NOT NULL,                  -- 处置时异常项完整证据快照（永久留痕）
+    request_hash    TEXT NOT NULL,                     -- 处置请求指纹（同单号幂等/冲突判定）
+    created_at      TEXT NOT NULL,
+    UNIQUE (sample_id, item_id, item_digest)           -- 同一异常项同一证据摘要只接受一次处置
+);
+
 CREATE INDEX IF NOT EXISTS idx_event_sample_time ON custody_event(sample_id, occurred_at, id);
 CREATE INDEX IF NOT EXISTS idx_version_sample ON sample_version(sample_id, version);
 CREATE INDEX IF NOT EXISTS idx_review_case_dossier ON review_case(dossier_pk);
@@ -249,6 +271,7 @@ CREATE INDEX IF NOT EXISTS idx_person_alias_person ON person_alias(person_pk);
 CREATE INDEX IF NOT EXISTS idx_temp_reading_sample_time ON temp_reading(sample_id, occurred_at, id);
 CREATE INDEX IF NOT EXISTS idx_temp_reading_device_time ON temp_reading(device_id, occurred_at, id);
 CREATE INDEX IF NOT EXISTS idx_calibration_device_active ON device_calibration(device_id, voided_at, valid_from, valid_to);
+CREATE INDEX IF NOT EXISTS idx_temp_disposition_sample ON temp_disposition(sample_id, id);
 """
 
 # 依赖迁移新列的索引（须在旧库补列迁移完成后再创建）

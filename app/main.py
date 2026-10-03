@@ -19,6 +19,7 @@ from .calibrations import (
     void_calibration,
 )
 from .db import db_session, init_db, row_to_dict
+from .dispositions import get_disposition_review, submit_disposition
 from .dossiers import get_dossier, submit_dossier, verify_dossier
 from .identities import add_alias, get_person, list_persons, register_person
 from .reconciliations import get_batch_reconciliation, submit_batch_reconciliation
@@ -34,6 +35,7 @@ from .schemas import (
     ReviewIn,
     SampleIn,
     TempConfigIn,
+    TempDispositionIn,
     TempReadingIn,
     CalibrationIn,
     CalibrationVoidIn,
@@ -74,8 +76,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="样本交接链核验服务",
-    description="环境检测机构样本保管链（Chain of Custody）登记、事件核验、入库核定、版本化复核、人员标识复核回避、运输测温证据复核与设备校准可信复核",
-    version="1.9.0",
+    description="环境检测机构样本保管链（Chain of Custody）登记、事件核验、入库核定、版本化复核、人员标识复核回避、运输测温证据复核与设备校准可信复核、测温异常项处置意见",
+    version="1.10.0",
     lifespan=lifespan,
 )
 
@@ -380,6 +382,36 @@ def get_trusted_temperature_review_api(sample_code: str) -> dict[str, Any]:
     """
     with db_session() as conn:
         return get_trusted_temperature_review(conn, sample_code)
+
+
+# --------------------------------------------------------------------------- 测温异常项处置（运输质控）
+
+@app.post(f"{API_PREFIX}/samples/{{sample_code}}/temperature/dispositions", tags=["temperature"], status_code=201)
+def submit_temp_disposition_api(sample_code: str, data: TempDispositionIn) -> JSONResponse:
+    """提交可信测温异常项的处置意见（认可/排除异常及理由）。
+
+    * 仅接受当前仍存在且所见摘要一致的异常项：项已消失 → 409 disposition_item_stale，
+      摘要已变化（过期）→ 409 disposition_digest_mismatch，均整单拒绝且不留记录；
+    * 同一异常项在同一证据摘要下只接受一次处置 → 重复提交 409 disposition_duplicate；
+    * 同处置单号同内容重试 → 200 返回原结果（项事后失效也成立）；异内容 → 409 disposition_conflict；
+    * 处置只新增记录：不改原始读数、既有可信复核、保管链版本或已封存案卷。
+    """
+    with db_session(immediate=True) as conn:
+        disposition, idempotent = submit_disposition(conn, sample_code, data)
+    return JSONResponse(status_code=200 if idempotent else 201,
+                        content={"disposition": disposition, "idempotent": idempotent})
+
+
+@app.get(f"{API_PREFIX}/samples/{{sample_code}}/temperature/dispositions", tags=["temperature"])
+def get_temp_dispositions_api(sample_code: str) -> dict[str, Any]:
+    """测温异常项处置查询：当前异常项（稳定标识/证据摘要/时间范围/相关读数及校准证明/
+    按当前有效链重算的归属，待核明确标记）及其处置状态（未处置/有效处置），
+    并列出失效历史（旧意见永久可查，标为 superseded，附处置时证据快照）。
+
+    未设定测温配置 → 404 temp_config_not_found；样本不存在 → 404 sample_not_found。
+    """
+    with db_session() as conn:
+        return get_disposition_review(conn, sample_code)
 
 
 # --------------------------------------------------------------------------- 测温设备校准证明

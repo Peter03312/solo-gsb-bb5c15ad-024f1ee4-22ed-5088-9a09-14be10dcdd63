@@ -1,4 +1,6 @@
-"""零依赖（仅标准库）的 HTTP API 调用示例：完整演示登记→移交→签收→检查→入库→查询→核定。
+"""零依赖（仅标准库）的 HTTP API 调用示例：完整演示登记→移交→签收→检查→入库→查询→核定，
+以及纠错、批量移交、整批对账、版本复核、案卷封存与双人复核、人员标识回避、运输测温、
+校准证明可信复核与测温异常项处置全流程。
 
 使用前：
     pip install 无额外要求（urllib 为 Python 标准库）
@@ -819,6 +821,116 @@ def main() -> None:
     print("作废后可信复核状态:", r["assessment_status"], "| 原因:", r["unable_to_assess_reason"])
     for m in r["reading_matches"]:
         print(f"  {m['reading_id']} 缺证原因: {m['missing_reason']['code']}")
+
+    # 19) 测温异常项处置（运输质控）：查询当前异常项 → 提交处置 → 证据变化后旧意见失效
+    print("\n=== 测温异常项处置（运输质控）===")
+    dcode = f"API-DISP-{run_id}"
+    ddev = f"DEV-DISP-{run_id}"
+    call("POST", "/samples", {
+        "sample_code": dcode, "collected_at": "2026-09-30T01:00:00Z",
+        "collector": collector, "seal_no": "SEAL-DISP-1"})
+    call("POST", "/events", {
+        "event_id": f"API-DEVT-T1-{run_id}", "event_type": "transfer", "sample_code": dcode,
+        "occurred_at": "2026-09-30T02:00:00Z",
+        "transfer_no": "TR-DISP-1", "from_custodian": collector, "to_custodian": "李运输"})
+    call("POST", "/events", {
+        "event_id": f"API-DEVT-R1-{run_id}", "event_type": "receive", "sample_code": dcode,
+        "occurred_at": "2026-09-30T04:00:00Z",
+        "transfer_no": "TR-DISP-1", "receiver": "李运输", "seal_no": "SEAL-DISP-1"})
+    call("POST", "/temperature-configs", {
+        "sample_code": dcode, "min_celsius": 2.0, "max_celsius": 8.0, "max_interval_seconds": 1800})
+    call("POST", "/temperature-readings", {
+        "sample_code": dcode, "reading_id": f"API-DRD-1-{run_id}",
+        "device_id": ddev, "occurred_at": "2026-09-30T01:30:00Z", "value_celsius": 4.0})
+    call("POST", "/temperature-readings", {
+        "sample_code": dcode, "reading_id": f"API-DRD-2-{run_id}",
+        "device_id": ddev, "occurred_at": "2026-09-30T02:30:00Z", "value_celsius": 9.5})  # 超温（在途）
+    call("POST", "/temperature-readings", {
+        "sample_code": dcode, "reading_id": f"API-DRD-3-{run_id}",
+        "device_id": ddev, "occurred_at": "2026-09-30T05:00:00Z", "value_celsius": 5.0})   # 跨签收缺测
+    dcal = f"API-DCAL-{run_id}"
+    call("POST", "/temperature-calibrations", {
+        "certificate_id": dcal, "device_id": ddev,
+        "valid_from": "2026-09-30T01:00:00Z", "valid_to": "2026-09-30T06:00:00Z",
+        "issued_by": "计量员甲"})
+
+    # 查询当前异常项：稳定标识/证据摘要/时间范围/相关读数及校准证明/归属（待核会明确标记）
+    s, r = call("GET", f"/samples/{dcode}/temperature/dispositions")
+    print(f"\n--- 异常项处置查询 [HTTP {s}] ---")
+    print("当前异常项:", r["item_count"], "| 未处置:", r["undisposed_count"],
+          "| 有效处置:", r["disposed_count"], "| 失效历史:", r["superseded_count"])
+    for it in r["items"]:
+        who = it.get("attribution") or {}
+        if it["kind"] == "gap":
+            who = it["segments"][-1]["attribution"]
+        print(f"  {it['item_id']} [{it['kind']}] {it['time_range']['start']} → {it['time_range']['end']}"
+              f" 摘要:{it['digest'][:12]}… 归属:{who.get('kind')} 状态:{it['disposition_status']}")
+    oor_item = next(x for x in r["items"] if x["kind"] == "out_of_range")
+    gap_item = next(x for x in r["items"] if x["kind"] == "gap")
+
+    # 提交处置：处置单号 + 异常项标识 + 所见摘要 + 处置人 + 认可/排除意见及理由
+    dno = f"API-DSP-{run_id}-1"
+    s, r = call("POST", f"/samples/{dcode}/temperature/dispositions", {
+        "disposition_no": dno, "item_id": oor_item["item_id"],
+        "observed_digest": oor_item["digest"], "operator": "质控员甲",
+        "verdict": "accepted", "reason": "运输途中制冷机组故障，认可超温异常"})
+    show("提交处置（201，认可超温）", s, r, "disposition", "status")
+
+    # 同单号同内容重试 → 200 返回原结果；异内容 → 409；同项同摘要再处置 → 409
+    s, r = call("POST", f"/samples/{dcode}/temperature/dispositions", {
+        "disposition_no": dno, "item_id": oor_item["item_id"],
+        "observed_digest": oor_item["digest"], "operator": "质控员甲",
+        "verdict": "accepted", "reason": "运输途中制冷机组故障，认可超温异常"})
+    show("同单号同内容重试（200 幂等）", s, r, "idempotent")
+    s, r = call("POST", f"/samples/{dcode}/temperature/dispositions", {
+        "disposition_no": dno, "item_id": oor_item["item_id"],
+        "observed_digest": oor_item["digest"], "operator": "质控员甲",
+        "verdict": "excluded", "reason": "改变意见内容"})
+    print("同单号异内容:", s, r.get("error", {}).get("code"))
+    s, r = call("POST", f"/samples/{dcode}/temperature/dispositions", {
+        "disposition_no": f"API-DSP-{run_id}-2", "item_id": oor_item["item_id"],
+        "observed_digest": oor_item["digest"], "operator": "质控员乙",
+        "verdict": "excluded", "reason": "换人重复处置同一摘要"})
+    print("同项同摘要重复处置:", s, r.get("error", {}).get("code"))
+
+    # 过期/消失的项整单拒绝且不留记录
+    s, r = call("POST", f"/samples/{dcode}/temperature/dispositions", {
+        "disposition_no": f"API-DSP-{run_id}-3", "item_id": gap_item["item_id"],
+        "observed_digest": "0" * 64, "operator": "质控员乙",
+        "verdict": "accepted", "reason": "故意使用错误摘要"})
+    print("摘要过期（与当前不一致）:", s, r.get("error", {}).get("code"))
+    s, r = call("POST", f"/samples/{dcode}/temperature/dispositions", {
+        "disposition_no": f"API-DSP-{run_id}-4", "item_id": "OOR-NO-SUCH",
+        "observed_digest": "0" * 64, "operator": "质控员乙",
+        "verdict": "accepted", "reason": "故意使用不存在的项"})
+    print("异常项不存在:", s, r.get("error", {}).get("code"))
+    s, r = call("POST", f"/samples/{dcode}/temperature/dispositions", {
+        "disposition_no": f"API-DSP-{run_id}-5", "item_id": gap_item["item_id"],
+        "observed_digest": gap_item["digest"], "operator": "质控员乙",
+        "verdict": "excluded", "reason": "期间样本在备用保温箱，排除缺测异常"})
+    show("排除缺测异常（201）", s, r, "disposition", "verdict")
+
+    # 证据变化（此处作废校准证明）→ 异常项消失，旧意见标为失效、永久可查
+    call("POST", f"/temperature-calibrations/{dcal}/void", {"reason": "示例：证明复核不通过作废"})
+    s, r = call("GET", f"/samples/{dcode}/temperature/dispositions")
+    print("\n证明作废后: 当前异常项", r["item_count"], "| 失效历史", r["superseded_count"])
+    for h in r["history"]:
+        print(f"  失效意见 {h['disposition_no']} 项:{h['item_id']} 状态:{h['status']}"
+              f" 意见:{h['verdict']} 理由:{h['reason']}")
+
+    # 补录新证明 → 异常项按新证据摘要重现，可重新处置
+    call("POST", "/temperature-calibrations", {
+        "certificate_id": f"{dcal}-2", "device_id": ddev,
+        "valid_from": "2026-09-30T01:00:00Z", "valid_to": "2026-09-30T06:00:00Z",
+        "issued_by": "计量员乙"})
+    s, r = call("GET", f"/samples/{dcode}/temperature/dispositions")
+    oor_new = next(x for x in r["items"] if x["kind"] == "out_of_range")
+    print("补录新证明后: 异常项重现，新摘要", oor_new["digest"][:12], "…（与旧摘要不同）")
+    s, r = call("POST", f"/samples/{dcode}/temperature/dispositions", {
+        "disposition_no": f"API-DSP-{run_id}-6", "item_id": oor_new["item_id"],
+        "observed_digest": oor_new["digest"], "operator": "质控员甲",
+        "verdict": "accepted", "reason": "新证明下重新认可超温异常"})
+    show("新摘要重新处置（201）", s, r, "disposition", "status")
 
 
 if __name__ == "__main__":

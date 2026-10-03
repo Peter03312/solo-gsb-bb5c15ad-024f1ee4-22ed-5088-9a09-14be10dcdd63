@@ -388,3 +388,33 @@ class CalibrationVoidIn(BaseModel):
         if not self.reason.strip():
             raise ValueError("作废原因不得为空白")
         return self
+
+
+DispositionVerdict = Literal["accepted", "excluded"]
+
+
+class TempDispositionIn(BaseModel):
+    """运输测温异常项处置单（运输质控）。
+
+    * 仅接受当前仍存在且所见摘要一致的异常项：过期（摘要已变化）或消失
+      （项已不存在）的项整单拒绝且不留记录；
+    * 同一异常项在同一证据摘要下只接受一次处置；
+    * 同处置单号同内容重试幂等返回原结果，异内容冲突。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    disposition_no: str = Field(..., min_length=1, description="全局唯一处置单号，同号重试幂等")
+    item_id: str = Field(..., min_length=1, description="异常项稳定标识（取自处置查询，如 OOR-RD-1 / GAP-RD-1-RD-2）")
+    observed_digest: str = Field(..., min_length=1, description="处置人所见异常项证据摘要（SHA-256，64 位十六进制）")
+    operator: str = Field(..., min_length=1, description="处置人")
+    verdict: DispositionVerdict = Field(..., description="处置意见：accepted=认可异常，excluded=排除异常")
+    reason: str = Field(..., min_length=1, description="处置理由（认可或排除均须填写非空理由）")
+
+    @model_validator(mode="after")
+    def _check_blank(self) -> "TempDispositionIn":
+        if not self.operator.strip():
+            raise ValueError("处置人不得为空白")
+        if not self.reason.strip():
+            raise ValueError("处置理由不得为空白")
+        return self
