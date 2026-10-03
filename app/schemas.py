@@ -388,3 +388,43 @@ class CalibrationVoidIn(BaseModel):
         if not self.reason.strip():
             raise ValueError("作废原因不得为空白")
         return self
+
+
+class AnomalyDispositionIn(BaseModel):
+    """可信测温复核异常处置单提交（一单一异常项）。
+
+    * 处置单号全局唯一：同单号同内容重试幂等返回原结果，异内容（含跨样本复用单号）冲突；
+    * 必须回传按样本查询异常时所见的稳定异常标识（anomaly_id）与证据摘要（expected_evidence_digest）：
+      仅接受当前仍存在且摘要一致的异常项；异常消失或摘要已变化（读数/证明补录或作废、
+      保管链纠错所致）整单拒绝（422 anomaly_stale）且不留记录，须重新查询后按新摘要提交；
+    * 同一异常项同一证据摘要只接受一次处置（重复提交 409 anomaly_already_disposed）；
+      旧意见失效后新摘要可重新处置；
+    * decision：acknowledged=认可异常，excluded=排除异常；均须给出非空理由；
+    * 处置不改动原始证据、既有可信复核、保管链版本与封存案卷。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    disposition_no: str = Field(..., min_length=1, description="全局唯一处置单号，同单号重试幂等")
+    sample_code: str = Field(..., min_length=1, description="异常项所属样本编号（路径须一致）")
+    anomaly_id: str = Field(
+        ..., min_length=1,
+        description="按样本查询所得稳定异常标识：oor:<读数号>（超温点）/ gap:<前读数号>:<后读数号>（缺测区间）",
+    )
+    expected_evidence_digest: str = Field(
+        ..., min_length=1,
+        description="所见证据摘要（查询响应中的 evidence_digest，SHA-256）；与当前不一致则整单拒绝",
+    )
+    decision: Literal["acknowledged", "excluded"] = Field(
+        ..., description="处置意见：acknowledged=认可异常，excluded=排除异常",
+    )
+    reason: str = Field(..., min_length=1, description="处置意见及理由（认可/排除均必填非空）")
+    handler: str = Field(..., min_length=1, description="处置人标识（工号/姓名等）")
+
+    @model_validator(mode="after")
+    def _check_text(self) -> "AnomalyDispositionIn":
+        if not self.reason.strip():
+            raise ValueError("处置理由不得为空白")
+        if not self.handler.strip():
+            raise ValueError("处置人不得为空白")
+        return self

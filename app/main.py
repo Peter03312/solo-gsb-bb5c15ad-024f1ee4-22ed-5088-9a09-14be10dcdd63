@@ -19,12 +19,14 @@ from .calibrations import (
     void_calibration,
 )
 from .db import db_session, init_db, row_to_dict
+from .dispositions import list_anomaly_view, list_disposition_ledger, submit_disposition
 from .dossiers import get_dossier, submit_dossier, verify_dossier
 from .identities import add_alias, get_person, list_persons, register_person
 from .reconciliations import get_batch_reconciliation, submit_batch_reconciliation
 from .reviews import get_review, submit_review
 from .schemas import (
     AliasIn,
+    AnomalyDispositionIn,
     ApproveIn,
     BatchReconciliationIn,
     CorrectionIn,
@@ -75,7 +77,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="样本交接链核验服务",
     description="环境检测机构样本保管链（Chain of Custody）登记、事件核验、入库核定、版本化复核、人员标识复核回避、运输测温证据复核与设备校准可信复核",
-    version="1.9.0",
+    version="1.10.0",
     lifespan=lifespan,
 )
 
@@ -426,6 +428,65 @@ def void_calibration_api(certificate_id: str, data: CalibrationVoidIn) -> JSONRe
         certificate, idempotent = void_calibration(conn, certificate_id, data)
     return JSONResponse(status_code=200 if idempotent else 201,
                         content={"certificate": certificate, "idempotent": idempotent})
+
+
+# --------------------------------------------------------------------------- 可信测温异常处置（运输质控）
+
+@app.get(f"{API_PREFIX}/samples/{{sample_code}}/temperature/anomalies", tags=["temperature-dispositions"])
+def list_anomalies_api(sample_code: str) -> dict[str, Any]:
+    """按样本查询当前可信测温复核异常项及其处置状态。
+
+    每项返回稳定标识（anomaly_id）、证据摘要（evidence_digest）、时间范围、
+    相关读数及校准证明、依当前有效保管链重算的归属（归属待核时 attribution_pending=true，
+    不臆定责任人），以及处置状态：未处置（disposition_status=pending）、有效处置
+    （active，附有效处置单）、失效历史（invalidated_history，旧意见永久可查）。
+    查询会惰性对账：异常消失或摘要变化的有效处置被标记为失效（只更新处置表状态，
+    不改原始读数、证明、可信复核结论、保管链版本与封存案卷）。未设定测温配置 → 404。
+    """
+    with db_session(immediate=True) as conn:
+        return list_anomaly_view(conn, sample_code)
+
+
+@app.post(
+    f"{API_PREFIX}/samples/{{sample_code}}/temperature/anomalies/dispositions",
+    tags=["temperature-dispositions"], status_code=201,
+)
+def submit_disposition_api(sample_code: str, data: AnomalyDispositionIn) -> JSONResponse:
+    """对一个当前异常项提交处置单（认可 acknowledged / 排除 excluded）。
+
+    * 必须回传所见稳定标识与证据摘要：异常已消失（anomaly_gone）或摘要已变化
+      （evidence_changed）→ 422 anomaly_stale，整单拒绝且不留记录（不占处置单号）；
+    * 同一异常项同一证据摘要只接受一次处置：重复提交 → 409 anomaly_already_disposed；
+    * 同处置单号同内容重试 → 200 幂等返回原结果（即使原意见其后已失效）；
+      异内容（含跨样本复用单号）→ 409 disposition_conflict；
+    * 读数补录、证明补录/作废、保管链纠错使异常或归属变化后，旧意见在对账时标为失效
+      （永久可查），新摘要下可重新处置；本接口不改变原始证据、可信复核、保管链版本及封存案卷。
+    """
+    with db_session(immediate=True) as conn:
+        body, idempotent = submit_disposition(conn, sample_code, data)
+    return JSONResponse(status_code=200 if idempotent else 201,
+                        content={**body, "idempotent": idempotent})
+
+
+@app.get(
+    f"{API_PREFIX}/samples/{{sample_code}}/temperature/anomalies/dispositions",
+    tags=["temperature-dispositions"],
+)
+def list_dispositions_api(sample_code: str, status: str | None = None) -> dict[str, Any]:
+    """异常处置台账：该样本全部处置单（含异常已消失的失效记录），可用 ?status= 过滤。
+
+    status 仅接受 active（有效处置）或 invalidated（失效历史），非法值 → 422。
+    每条附提交时证据快照（submitted_evidence）、失效原因/时间及该异常当前是否仍存在、
+    摘要是否一致（current）。查询同样执行惰性对账。
+    """
+    if status is not None and status not in ("active", "invalidated"):
+        return JSONResponse(status_code=422, content={"error": {
+            "code": "invalid_status_filter",
+            "message": "status 仅接受 active 或 invalidated",
+            "details": {"status": status},
+        }})
+    with db_session(immediate=True) as conn:
+        return list_disposition_ledger(conn, sample_code, status)
 
 
 # --------------------------------------------------------------------------- 案卷封存（同一抽检多份样本）

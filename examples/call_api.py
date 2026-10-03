@@ -820,6 +820,120 @@ def main() -> None:
     for m in r["reading_matches"]:
         print(f"  {m['reading_id']} 缺证原因: {m['missing_reason']['code']}")
 
+    # 19) 可信测温复核异常处置（运输质控）：查询异常 → 回传标识与摘要提交处置 → 失效后重处置
+    print("\n=== 可信测温复核异常处置（认可 / 排除） ===")
+    run_d = uuid.uuid4().hex[:8]
+    dcode = f"API-DISP-{run_d}"
+    dcollector = f"王采集-{run_d}"
+    call("POST", "/samples", {
+        "sample_code": dcode,
+        "collected_at": "2026-09-30T01:00:00Z",
+        "collector": dcollector,
+        "seal_no": f"SEAL-DISP-{run_d}",
+    })
+    call("POST", "/events", {
+        "event_id": f"API-DEVT-T1-{run_d}", "event_type": "transfer", "sample_code": dcode,
+        "occurred_at": "2026-09-30T02:30:00Z",
+        "transfer_no": f"TR-DISP-{run_d}", "from_custodian": dcollector, "to_custodian": "李运输",
+    })
+    call("POST", "/events", {
+        "event_id": f"API-DEVT-R1-{run_d}", "event_type": "receive", "sample_code": dcode,
+        "occurred_at": "2026-09-30T04:30:00Z",
+        "transfer_no": f"TR-DISP-{run_d}", "receiver": "李运输", "seal_no": f"SEAL-DISP-{run_d}",
+    })
+    call("POST", "/temperature-configs", {
+        "sample_code": dcode, "min_celsius": 2.0, "max_celsius": 8.0, "max_interval_seconds": 1800,
+    })
+    for rid, when, value in [
+        (f"API-DRD-1-{run_d}", "2026-09-30T02:00:00Z", 5.0),
+        (f"API-DRD-2-{run_d}", "2026-09-30T02:30:00Z", 9.6),   # 超温（在途，与上条读数间隔 30 分钟无缺测）
+        (f"API-DRD-3-{run_d}", "2026-09-30T07:00:00Z", 5.0),   # 与上一有证读数形成缺测
+    ]:
+        call("POST", "/temperature-readings", {
+            "sample_code": dcode, "reading_id": rid,
+            "device_id": "DEV-DISP-01", "occurred_at": when, "value_celsius": value,
+        })
+    call("POST", "/temperature-calibrations", {
+        "certificate_id": f"API-DCAL-1-{run_d}", "device_id": "DEV-DISP-01",
+        "valid_from": "2026-09-30T01:00:00Z", "valid_to": "2026-09-30T08:00:00Z",
+        "issued_by": "计量员甲",
+    })
+
+    # 19.1) 按样本查询当前异常项：稳定标识、证据摘要、时间范围、相关读数及校准证明、归属
+    s, r = call("GET", f"/samples/{dcode}/temperature/anomalies")
+    print(f"\n--- 当前异常项 [HTTP {s}] 共 {r['total']} 项（未处置 {r['pending_count']}） ---")
+    for a in r["items"]:
+        print(f"  [{a['anomaly_id']}] {a['summary']}")
+        print(f"    时间范围 {a['time_range']['start']} ~ {a['time_range']['end']}"
+              f" | 归属待核={a['attribution_pending'] if 'attribution_pending' in a else '见缺测各段'}"
+              f" | evidence_digest={a['evidence_digest'][:12]}…")
+
+    point = next(a for a in r["items"] if a["anomaly_type"] == "out_of_range_point")
+    gap = next(a for a in r["items"] if a["anomaly_type"] == "gap_interval")
+
+    # 19.2) 认可超温：提交单号 + 异常标识 + 所见摘要 + 处置人 + 意见与理由
+    s, r = call("POST", f"/samples/{dcode}/temperature/anomalies/dispositions", {
+        "disposition_no": f"API-DISP-NO-1-{run_d}",
+        "sample_code": dcode,
+        "anomaly_id": point["anomaly_id"],
+        "expected_evidence_digest": point["evidence_digest"],
+        "decision": "acknowledged",
+        "reason": "认可超温：在途期间温控失效，读数有有效校准证明覆盖",
+        "handler": "质控员赵",
+    })
+    show("认可超温（201）", s, r, "disposition", "status")
+
+    # 19.3) 排除缺测（同一证据摘要只接受一次；再提同项 → 409 anomaly_already_disposed）
+    s, r = call("POST", f"/samples/{dcode}/temperature/anomalies/dispositions", {
+        "disposition_no": f"API-DISP-NO-2-{run_d}",
+        "sample_code": dcode,
+        "anomaly_id": gap["anomaly_id"],
+        "expected_evidence_digest": gap["evidence_digest"],
+        "decision": "excluded",
+        "reason": "排除缺测：设备更换电池停机，已有纸质交接记录佐证",
+        "handler": "质控员钱",
+    })
+    show("排除缺测（201）", s, r, "disposition", "decision")
+    s, r = call("POST", f"/samples/{dcode}/temperature/anomalies/dispositions", {
+        "disposition_no": f"API-DISP-NO-3-{run_d}",
+        "sample_code": dcode,
+        "anomaly_id": point["anomaly_id"],
+        "expected_evidence_digest": point["evidence_digest"],
+        "decision": "excluded", "reason": "同一摘要重复处置", "handler": "质控员钱",
+    })
+    print("同一异常同一摘要重复处置:", s, r.get("error", {}).get("code"),
+          "| 原处置单:", r.get("error", {}).get("details", {}).get("existing_disposition_no"))
+
+    # 19.4) 同单号同内容重试 → 200 返回原结果；异内容 → 409 disposition_conflict
+    s, r = call("POST", f"/samples/{dcode}/temperature/anomalies/dispositions", {
+        "disposition_no": f"API-DISP-NO-1-{run_d}",
+        "sample_code": dcode,
+        "anomaly_id": point["anomaly_id"],
+        "expected_evidence_digest": point["evidence_digest"],
+        "decision": "acknowledged",
+        "reason": "认可超温：在途期间温控失效，读数有有效校准证明覆盖",
+        "handler": "质控员赵",
+    })
+    show("同单号同内容重试（200 幂等）", s, r, "idempotent")
+
+    # 19.5) 持过期摘要提交 → 422 anomaly_stale（保管链纠错改变归属/摘要时同理）
+    s, r = call("POST", f"/samples/{dcode}/temperature/anomalies/dispositions", {
+        "disposition_no": f"API-DISP-NO-STALE-{run_d}",
+        "sample_code": dcode,
+        "anomaly_id": point["anomaly_id"],
+        "expected_evidence_digest": "0" * 64,
+        "decision": "acknowledged", "reason": "持过期摘要", "handler": "质控员赵",
+    })
+    print("过期摘要提交:", s, r.get("error", {}).get("code"),
+          "| 原因:", r.get("error", {}).get("details", {}).get("reason"))
+
+    # 19.6) 台账：区分未处置/有效处置/失效历史（?status= 过滤）
+    s, r = call("GET", f"/samples/{dcode}/temperature/anomalies/dispositions")
+    print(f"\n--- 处置台账 [HTTP {s}] 共 {r['total']} 条"
+          f"（有效 {r['active_count']} / 失效 {r['invalidated_count']}） ---")
+    for d in r["items"]:
+        print(f"  {d['disposition_no']}: {d['anomaly_id']} {d['decision']} {d['status']}")
+
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,6 @@
 # 样本交接链核验服务（Chain of Custody）
 
-面向环境检测机构的样本保管链核验服务：登记样本采集信息，接收**移交 / 签收 / 封签检查 / 实验室入库**四类带唯一事件号的事件，自动按发生时间重算证据链，输出**当前保管人**与 **有效（valid）/ 待补证（pending）/ 无效（invalid）**结论及原因；同一交接车次的多份样本支持**批量移交一次提交**（全局唯一批次号、统一移交时间/交出人/接收人，整批原子、同号幂等）；核定入库前支持对当前有效事件提交**作废 / 替换纠错**（永久留痕、仅有效版本参与核验）；仅有效链可核定入库，核定后历史冻结；全部真正提交按先后形成**不可变版本**，质控可按样本编号 + 版本号复核任一历史版本的结论、原因、保管人、有效时间线、纠错与核定信息（版本 0 起，核定后旧版仍可查）；同一抽检的多份样本可**封存为案卷**（至少两份、可逐份指定历史版本、整卷原子、按样本编号排序清单 + 完整快照 + 可复算 SHA-256 摘要，封存后任何写入不改变旧案卷）；质控对已封存案卷作**双人独立复核**（提交须核对案卷摘要，摘要不一致拒绝写入；两名不同复核人各提交一次完整清单，意见不可改；逐份意见一致即终局，分歧份项只允许未参与前两次复核的第三人裁决，全部份项终局后形成案卷结论，任一份不通过则案卷不通过）；同一批量移交车次到达接收方后支持**整批对账签收**（以批次号、全局唯一签收单号、签收人和统一时间逐份提交覆盖原批次全部样本的对账清单：收妥项填写唯一事件号及实核封签号并作为既有 receive 事件与各样本新版本同事务提交，异常项仅填原因不生成签收事件；任一收妥项不合格或缺项/重复/外来项/事件号占用均整单拒绝不留记录；一个批次只能成功对账一次，同单号同内容重试返回原结果，查询呈现当时收妥/异常明细及纠错后各收妥事件的现时有效性）；支持**人员标识与历史别名登记**（别名全局唯一、不得转移归属，增补须携带所见修订号），复核提交时自动做**利益冲突回避**（复核人及其别名命中封存份项的采集/移交/签收/核定参与人即整单拒绝），成功意见记录当时身份归属供查询；运输期间支持**测温证据复核**（每份未核定样本一次性设定允许摄氏温度闭区间与正数最大测温间隔，按全局唯一读数号记录设备号/发生时间/有限数值，采集前、重复发生时刻或同号异内容拒绝；查询按发生时间列出超温点与相邻读数间超过限值的缺测区间，跨移交/签收时刻的缺测段自动拆分并依当前有效保管链标明每段当时保管人或在途移交，断链导致归属不能确定时标为待核；乱序补录与移交/签收纠错后即时重算归属，原始读数与旧纠错记录不改；核定后拒绝新配置与读数）；测温设备的**校准证明可晚于运输记录补录**（围绕已有读数设备登记全局唯一证明号、左闭右开有效起止时刻与签发人，同号同内容重试返回原结果、异内容冲突，同设备有效证明时段不得重叠，按证明号附理由作废）；可信复核逐条列出读数匹配的证明号或缺证原因，仅用有证读数计算超温点与相邻有证读数的缺测区间，补录/作废证明即时重算但不改原始读数、既有测温查询、保管链版本或已封存案卷，无任何有证读数时明确标记无法评估。
+面向环境检测机构的样本保管链核验服务：登记样本采集信息，接收**移交 / 签收 / 封签检查 / 实验室入库**四类带唯一事件号的事件，自动按发生时间重算证据链，输出**当前保管人**与 **有效（valid）/ 待补证（pending）/ 无效（invalid）**结论及原因；同一交接车次的多份样本支持**批量移交一次提交**（全局唯一批次号、统一移交时间/交出人/接收人，整批原子、同号幂等）；核定入库前支持对当前有效事件提交**作废 / 替换纠错**（永久留痕、仅有效版本参与核验）；仅有效链可核定入库，核定后历史冻结；全部真正提交按先后形成**不可变版本**，质控可按样本编号 + 版本号复核任一历史版本的结论、原因、保管人、有效时间线、纠错与核定信息（版本 0 起，核定后旧版仍可查）；同一抽检的多份样本可**封存为案卷**（至少两份、可逐份指定历史版本、整卷原子、按样本编号排序清单 + 完整快照 + 可复算 SHA-256 摘要，封存后任何写入不改变旧案卷）；质控对已封存案卷作**双人独立复核**（提交须核对案卷摘要，摘要不一致拒绝写入；两名不同复核人各提交一次完整清单，意见不可改；逐份意见一致即终局，分歧份项只允许未参与前两次复核的第三人裁决，全部份项终局后形成案卷结论，任一份不通过则案卷不通过）；同一批量移交车次到达接收方后支持**整批对账签收**（以批次号、全局唯一签收单号、签收人和统一时间逐份提交覆盖原批次全部样本的对账清单：收妥项填写唯一事件号及实核封签号并作为既有 receive 事件与各样本新版本同事务提交，异常项仅填原因不生成签收事件；任一收妥项不合格或缺项/重复/外来项/事件号占用均整单拒绝不留记录；一个批次只能成功对账一次，同单号同内容重试返回原结果，查询呈现当时收妥/异常明细及纠错后各收妥事件的现时有效性）；支持**人员标识与历史别名登记**（别名全局唯一、不得转移归属，增补须携带所见修订号），复核提交时自动做**利益冲突回避**（复核人及其别名命中封存份项的采集/移交/签收/核定参与人即整单拒绝），成功意见记录当时身份归属供查询；运输期间支持**测温证据复核**（每份未核定样本一次性设定允许摄氏温度闭区间与正数最大测温间隔，按全局唯一读数号记录设备号/发生时间/有限数值，采集前、重复发生时刻或同号异内容拒绝；查询按发生时间列出超温点与相邻读数间超过限值的缺测区间，跨移交/签收时刻的缺测段自动拆分并依当前有效保管链标明每段当时保管人或在途移交，断链导致归属不能确定时标为待核；乱序补录与移交/签收纠错后即时重算归属，原始读数与旧纠错记录不改；核定后拒绝新配置与读数）；测温设备的**校准证明可晚于运输记录补录**（围绕已有读数设备登记全局唯一证明号、左闭右开有效起止时刻与签发人，同号同内容重试返回原结果、异内容冲突，同设备有效证明时段不得重叠，按证明号附理由作废）；可信复核逐条列出读数匹配的证明号或缺证原因，仅用有证读数计算超温点与相邻有证读数的缺测区间，补录/作废证明即时重算但不改原始读数、既有测温查询、保管链版本或已封存案卷，无任何有证读数时明确标记无法评估；运输质控人可对可信复核当前异常项（超温点/缺测区间）留存认可或排除处置意见（稳定异常标识 + 证据摘要，归属待核不臆定责任人，仅接受当前仍存在且摘要一致的项，同单号幂等、异内容冲突、同异常同摘要仅一次，证据变化后旧意见标记失效永久可查、新摘要可重新处置，处置不改原始证据、复核结论、保管链版本与封存案卷）。
 
 技术栈：**Python 3.11 + FastAPI + SQLite（标准库 sqlite3）**，无外部服务依赖。
 
@@ -45,6 +45,7 @@
 | 校准证明登记 | 校准证明可晚于运输记录补录，但设备号必须已在测温读数中出现；登记全局唯一证明号、设备号、左闭右开有效期 `[valid_from, valid_to)` 与签发人。空时段/反序时段拒绝；同设备**未作废**证明时段不得重叠（端点相邻允许，已作废证明不参与），不同设备可同时段；同号同内容重试返回原结果（200，时区表示归一），同号异内容 409；未知/无效/重叠请求事务回滚，不留部分记录 |
 | 校准证明作废 | 按证明号附非空理由作废；未知证明 404；同证明同理由重试返回原作废结果，不同理由 409。作废后该证明不再覆盖读数，补录/作废均不改动读数、既有测温查询、保管链版本或已封存案卷；核定样本的证明仍可补录或作废 |
 | 可信测温复核 | `GET /temperature/trusted` 逐条列出每个读数匹配的证明号或缺证原因；仅用有有效证明覆盖的读数计算超温点，并用**相邻有证读数**（忽略中间无证读数）计算缺测区间，保管链区间拆分和归属沿用既有规则。没有任何有证读数时返回 `assessment_status=unable_to_assess` 且超温/缺测结果为空；补录或作废证明后查询即时重算 |
+| 异常处置（运输质控） | 质控人对可信复核当前仍存在的**超温点（`oor:<读数号>`）与缺测区间（`gap:<前读数号>:<后读数号>`）**留存认可/排除意见。每项返回稳定标识、证据摘要（覆盖读数/限值/证明/时间范围/按当前有效保管链重算的归属的 SHA-256）、时间范围、相关读数及校准证明；归属待核明确标记不臆定责任人。提交须回传所见标识与摘要：**仅接受当前仍存在且摘要一致的项**，异常消失或摘要过期 → 422 `anomaly_stale` **整单拒绝不留记录**；**同一异常同一摘要只接受一次处置**（409 `anomaly_already_disposed`），同处置单号同内容重试 200 返回原结果、异内容（含跨样本）409。读数补录、证明补录/作废、保管链纠错使异常或归属变化后，旧意见**惰性对账标记失效**（`anomaly_gone`/`evidence_changed`，永久可查、不复活），新摘要可重新处置；查询区分未处置/有效处置/失效历史，处置不改原始证据、可信复核、保管链版本与封存案卷（不产生版本；核定样本亦可处置） |
 
 > 说明：任何事件发生时间早于样本采集时间，直接记为无效（采集前不可能发生保管动作）。
 
@@ -1088,6 +1089,133 @@ curl http://localhost:8080/api/v1/samples/S-001/temperature/trusted
 - 没有任何有证读数时：`assessment_status="unable_to_assess"`、`unable_to_assess_reason` 非空、`certified_reading_count=0`，并且 `out_of_range_points`、`gap_intervals` 均为空；仍逐条列出缺证原因。
 - 证明补录或作废后再次查询即时重算；原始读数和既有 `/temperature` 查询不变。既有查询继续按全部读数给出原始测温复核，可信结果只在 `/temperature/trusted` 输出。
 
+### 5.13 可信测温复核异常处置（运输质控）
+
+运输质控人对可信测温复核中的**超温点与缺测区间**留存处置意见（认可 / 排除）。异常项以**稳定标识**追踪，以**证据摘要**防止处置过期证据；处置意见在证据变化后自动失效留痕，但不改动任何原始证据。
+
+- 稳定标识：超温点 `oor:<读数号>`；缺测区间 `gap:<前一有证读数号>:<后一有证读数号>`（读数号全局唯一）。
+- 证据摘要 `evidence_digest`：对异常全部证据要素（读数设备/时刻/数值、方向与限值、覆盖证明号、时间范围与跨移交/签收拆分段、依当前有效保管链重算的归属）做规范 JSON 的 SHA-256。读数补录、证明补录/作废、保管链纠错使异常消失或要素变化时，摘要随之变化。
+- 归属依**当前有效保管链**重算；归属待核时 `attribution_pending=true`（超温点）或缺测某段 `attribution.kind="pending_review"`，不臆定责任人。
+
+#### 按样本查询当前异常项
+
+`GET /api/v1/samples/{sample_code}/temperature/anomalies`
+
+```bash
+curl http://localhost:8080/api/v1/samples/S-001/temperature/anomalies
+```
+
+```json
+{
+  "sample_code": "S-001",
+  "assessment_status": "assessable",
+  "unable_to_assess_reason": null,
+  "total": 2,
+  "pending_count": 1,
+  "active_count": 1,
+  "invalidated_history_count": 1,
+  "vanished_disposition_count": 0,
+  "items": [
+    {
+      "anomaly_id": "oor:RD-0002",
+      "anomaly_type": "out_of_range_point",
+      "summary": "超温点（高于上限）：读数 RD-0002 于 2026-09-30T03:00:00Z 测得 9.6℃，高于上限 8.0℃，校准证明 CAL-001",
+      "evidence_digest": "b867e73b…c850a5d",
+      "time_range": {"start": "2026-09-30T03:00:00Z", "end": "2026-09-30T03:00:00Z"},
+      "reading": {
+        "reading_id": "RD-0002", "device_id": "DEV-COLD-01",
+        "occurred_at": "2026-09-30T03:00:00Z", "value_celsius": 9.6,
+        "direction": "above_max", "limit_celsius": 8.0,
+        "certificate_id": "CAL-001",
+        "certificate": {"certificate_id": "CAL-001", "device_id": "DEV-COLD-01",
+                        "valid_from": "…", "valid_to": "…", "issued_by": "…",
+                        "status": "active", "voided_at": null}
+      },
+      "attribution": {"kind": "in_transit", "transfer_no": "TR-1",
+                      "from_custodian": "王采集", "to_custodian": "李运输",
+                      "transfer_event_id": "EVT-T1"},
+      "attribution_pending": false,
+      "disposition_status": "active",
+      "disposition": {
+        "disposition_no": "DISP-0001", "anomaly_id": "oor:RD-0002",
+        "anomaly_type": "out_of_range_point",
+        "decision": "acknowledged", "reason": "认可：在途温控失效，读数有证",
+        "handler": "质控员赵", "submitted_at": "2026-10-03T08:00:00Z",
+        "submitted_evidence_digest": "b867e73b…c850a5d",
+        "status": "active", "invalidated_at": null, "invalidate_reason": null,
+        "current_evidence_digest": null,
+        "submitted_evidence": { "…": "提交时所见异常完整快照（失效后仍可查）" }
+      },
+      "invalidated_history": []
+    },
+    {
+      "anomaly_id": "gap:RD-0002:RD-0003",
+      "anomaly_type": "gap_interval",
+      "summary": "缺测区间：相邻有证读数 RD-0002（证明 CAL-001）与 RD-0003（证明 CAL-001）间隔 16200 秒，超过最大测温间隔 1800 秒，跨移交/签收时刻拆分为 2 段",
+      "evidence_digest": "c690fc16…",
+      "time_range": {"start": "…", "end": "…", "duration_seconds": 16200, "max_interval_seconds": 1800},
+      "readings": [ {"…": "端点读数（含证书）"}, {"…": ""} ],
+      "segments": [
+        {"start": "…", "end": "…", "duration_seconds": 3600,
+         "attribution": {"kind": "in_transit", "…": "…"}},
+        {"start": "…", "end": "…", "duration_seconds": 12600,
+         "attribution": {"kind": "custodian", "custodian": "李运输"}}
+      ],
+      "attribution_pending": false,
+      "disposition_status": "pending",
+      "disposition": null,
+      "invalidated_history": [
+        {"disposition_no": "DISP-0000", "decision": "excluded",
+         "status": "invalidated", "invalidate_reason": "evidence_changed",
+         "invalidated_at": "2026-10-03T09:00:00Z",
+         "current_evidence_digest": "c690fc16…",
+         "submitted_evidence": {"…": "旧摘要下的证据完整快照"}, "…": "…"}
+      ]
+    }
+  ]
+}
+```
+
+每项三态明确区分：`disposition_status` 为 `pending`（未处置）或 `active`（已有有效处置，附 `disposition`）；`invalidated_history` 为该异常的**失效历史**（旧意见永久可查，不删除不改写）。`vanished_disposition_count` 为异常已消失、只在台账中可见的失效处置数。查询会执行惰性对账：异常消失的有效处置标记为 `invalidated / anomaly_gone`，摘要变化的标记为 `invalidated / evidence_changed`（记录重算后的当前摘要）。未设定测温配置 → 404 `temp_config_not_found`。
+
+#### 提交处置单（一单一异常项）
+
+`POST /api/v1/samples/{sample_code}/temperature/anomalies/dispositions`
+
+```bash
+curl -X POST http://localhost:8080/api/v1/samples/S-001/temperature/anomalies/dispositions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "disposition_no": "DISP-0001",
+    "sample_code": "S-001",
+    "anomaly_id": "oor:RD-0002",
+    "expected_evidence_digest": "b867e73b…c850a5d",
+    "decision": "acknowledged",
+    "reason": "认可：在途温控失效，读数有有效校准证明覆盖",
+    "handler": "质控员赵"
+  }'
+```
+
+- `decision`：`acknowledged`=认可异常，`excluded`=排除异常；两种意见都必须给非空 `reason`。
+- **仅接受当前仍存在且摘要一致的异常项**：异常已消失（`anomaly_gone`）或摘要已变化（`evidence_changed`）→ 422 `anomaly_stale`，**整单拒绝且不留记录**（不占处置单号，详情给当前摘要/当前异常标识），须重新查询后按新摘要提交。
+- **同一异常项同一证据摘要只接受一次处置**：重复提交 → 409 `anomaly_already_disposed`（详情给原处置单号与意见）。旧意见失效后，新摘要下可重新处置。
+- 同 `disposition_no` **同内容重试 → 200** 幂等返回原结果（即使原意见其后已失效，返回中带最新失效状态）；**异内容（含跨样本复用单号）→ 409** `disposition_conflict`。
+- 路径样本与请求体样本不一致 → 422 `disposition_sample_mismatch`。
+- 处置只写处置台账：**不改变**原始读数、校准证明、既有可信复核结论、保管链版本与已封存案卷（不产生保管链版本；核定样本同样可查询与处置）。
+
+#### 处置台账（含失效历史）
+
+`GET /api/v1/samples/{sample_code}/temperature/anomalies/dispositions[?status=active|invalidated]`
+
+```bash
+curl "http://localhost:8080/api/v1/samples/S-001/temperature/anomalies/dispositions"
+curl "http://localhost:8080/api/v1/samples/S-001/temperature/anomalies/dispositions?status=invalidated"
+```
+
+返回该样本**全部处置单**（含异常已消失的失效记录）：每条含提交时证据快照 `submitted_evidence`、失效原因/时间、以及该异常当前是否仍存在与摘要是否一致（`current.present` / `current.digest_matches`；未配置时 `current.assessable=false`）。`status` 仅接受 `active` / `invalidated`，非法值 → 422 `invalid_status_filter`。
+
+失效原因：`anomaly_gone`（补录读数拆分缺测、证明作废使超温点退出评估等）；`evidence_changed`（证明补录/作废、保管链纠错改变归属或证据要素；记录 `current_evidence_digest`）。失效意见**永不复活**：即使新证据摘要恰好与旧摘要相同，旧处置仍保持 `invalidated`（同一异常同一摘要至多一条有效处置，由数据库部分唯一索引保证，并发安全）。
+
 ### 错误响应统一格式
 
 ```json
@@ -1136,6 +1264,11 @@ curl http://localhost:8080/api/v1/samples/S-001/temperature/trusted
 | 409 | `calibration_conflict` | 同校准证明号异内容重试 |
 | 409 | `calibration_overlap` | 同一设备未作废证明的左闭右开有效时段重叠 |
 | 409 | `calibration_void_conflict` | 已作废证明再次以不同理由作废 |
+| 422 | `anomaly_stale` | 异常处置提交时异常已消失（`anomaly_gone`：当前异常标识不存在）或证据摘要已变化（`evidence_changed`：详情给当前摘要）；整单拒绝且不留记录 |
+| 409 | `anomaly_already_disposed` | 同一异常项同一证据摘要已有有效处置（含并发抢先，详情给原处置单号） |
+| 409 | `disposition_conflict` | 同处置单号异内容重试（含跨样本复用该单号）或并发同号异内容 |
+| 422 | `disposition_sample_mismatch` | 处置单请求体样本编号与路径样本不一致（处置不得跨样本） |
+| 422 | `invalid_status_filter` | 处置台账 `?status=` 取值非 `active`/`invalidated` |
 
 ---
 
@@ -1246,6 +1379,27 @@ curl -X POST http://localhost:8080/api/v1/temperature-calibrations/CAL-0001/void
   -H 'Content-Type: application/json' -d '{"reason":"证明编号复核不通过"}'
 ```
 
+异常处置 curl 速览（先查询取得稳定标识与证据摘要，再回传提交；仅接受当前仍存在且摘要一致的项）：
+
+```bash
+# 1) 查询当前异常项：取 anomaly_id 与 evidence_digest（含相关读数、校准证明与重算归属）
+curl http://localhost:8080/api/v1/samples/S-001/temperature/anomalies
+# 2) 回传标识与所见摘要提交处置：acknowledged=认可 / excluded=排除（理由必填）
+curl -X POST http://localhost:8080/api/v1/samples/S-001/temperature/anomalies/dispositions \
+  -H 'Content-Type: application/json' -d '{
+    "disposition_no":"DISP-0001","sample_code":"S-001",
+    "anomaly_id":"oor:RD-0002","expected_evidence_digest":"<查询所见 evidence_digest>",
+    "decision":"acknowledged","reason":"认可：在途温控失效，读数有证","handler":"质控员赵"}'
+# 3) 台账：区分未处置（在异常查询中）、有效处置与失效历史（?status= 过滤）
+curl "http://localhost:8080/api/v1/samples/S-001/temperature/anomalies/dispositions"
+curl "http://localhost:8080/api/v1/samples/S-001/temperature/anomalies/dispositions?status=invalidated"
+# 同单号同内容重试 → 200 返回原结果；异内容 → 409 disposition_conflict；
+# 异常消失/摘要过期 → 422 anomaly_stale（整单拒绝不留记录）；同异常同摘要重复处置 → 409 anomaly_already_disposed；
+# 读数补录、证明补录/作废、保管链纠错后旧意见自动标为失效（永久可查），新摘要可重新处置。
+```
+
+完整可运行流程见 `python examples/call_api.py` 的“可信测温复核异常处置”一节。
+
 ---
 
 ## 七、自测
@@ -1261,6 +1415,7 @@ python -m tests.test_reviews        # 案卷双人复核：80 项断言（含并
 python -m tests.test_identities     # 人员标识与复核回避：67 项断言（含并发）
 python -m tests.test_temperature    # 运输测温证据：83 项断言（含并发）
 python -m tests.test_calibrations   # 设备校准证明与可信复核：58 项断言（含并发）
+python -m tests.test_dispositions   # 可信测温异常处置：69 项断言（含失效对账与并发）
 ```
 
 - `test_chain` 覆盖 14 类场景：登记幂等/冲突、四类无效情形（非保管人移交、在途再移交、签收四要素不符、重复签收、封签不符/破损）、待补证两情形、乱序补录重算、核定准入与冻结、事件早于采集、无效优先等。
@@ -1273,6 +1428,7 @@ python -m tests.test_calibrations   # 设备校准证明与可信复核：58 项
 - `test_identities` 覆盖：人员登记（同内容幂等/异内容冲突/名称占用/初始别名字段校验）、增补别名（所见修订号成功与过期拒绝、别名归属本人/他人/主标识冲突、未知人员 404、并发同修订号仅一次成功）、复核回避（采集人/移交人/接收人/签收人/核定人各角色命中、多份命中列全、未登记姓名按原字符串比较、不占复核单号且不留记录、两人复核按全部份项、第三人裁决按分歧份项）、两人互异与第三人资格按提交时别名归属判定、成功意见记录身份归属（person_id）且后续增补别名不追溯、未登记/旧意见不伪造身份记录、既有复核单号/摘要/幂等规则保持。
 - `test_temperature` 覆盖：测温配置一次性设定（同内容幂等/异内容冲突/区间与间隔及有限数值校验/未知样本 404）、读数记录（未配置 409、采集前 422、重复发生时刻 409 含时区归一、同号同内容返回原记录/同号异内容 409、非有限数值 422）、复核查询（超温点方向与限值、边界值在范围内、缺测区间严格大于限值才报、跨移交/签收拆分、入库不拆分、逐段归属保管人/在途）、断链待核三情形（非保管人移交/签收无在途/在途再移交）与不触发待核两情形（签收要素不符、重复签收）、乱序补录与移交/签收纠错后归属重算且原始读数与旧纠错记录不改、核定后拒绝新配置与读数（同号同内容重试仍幂等）、测温数据不影响核验结论且不产生版本、空读数与间隔边界、并发（同号同内容一建一幂等、同号异内容与同时刻一胜一败、配置并发一建一幂等/一建一冲突）。
 - `test_calibrations` 覆盖：无读数设备/空时段/反序时段/空白签发人拒绝且不留记录，同号同内容幂等（时区归一）与异内容冲突，同设备有效区间重叠拒绝、端点相邻允许、不同设备可重叠，逐条可信匹配（有证、未登记证明、早于/晚于有效期、证明空档、证明已作废、结束点不含），无有证读数明确 `unable_to_assess`，仅用有证读数计算超温与相邻有证读数缺测并沿用保管链拆分，补录/作废即时重算且原读数、既有测温查询与保管链版本不变，作废幂等/异理由冲突/未知证明，作废后释放重叠限制，核定后仍可补录/作废证明，同号同内容并发一建一幂等、重叠证明并发一胜一败且失败不留记录。
+- `test_dispositions` 覆盖：异常查询稳定标识（`oor:<读数号>`/`gap:<前后读数号>`）、证据摘要、时间范围、相关读数与校准证明、在途/保管人/待核归属与 `attribution_pending`，认可/排除提交与字段校验，同一异常同一摘要仅一次（409 附原单号）、同单号同内容 200 幂等（含失效后重试）与异内容/换异常/跨样本 409，异常消失与摘要过期 422 `anomaly_stale` 且整单不留痕、未知/未配置/未知样本/路径不一致，保管链纠错致归属变化旧意见 `evidence_changed` 失效且新摘要可重新处置、失效意见不复活，证明作废致 `anomaly_gone` 与补证后重现、读数补录拆分缺测，断链待核异常处置，台账与 `status` 过滤（含未配置样本历史可读）、异常消失计数，核定后仍可处置且不产生版本/不污染可信复核，并发同摘要一 201 一 409、同单号同内容一 201 一 200。
 
 ---
 
@@ -1290,11 +1446,12 @@ python -m tests.test_calibrations   # 设备校准证明与可信复核：58 项
 │   ├── identities.py # 人员标识与历史别名：全局唯一命名空间、修订号增补、姓名→人员归属解析
 │   ├── temperature.py # 运输测温证据：一次性配置、读数记录（幂等/冲突/采集前/重复时刻）、超温点与缺测区间查询、保管归属重放与待核标注
 │   ├── calibrations.py # 设备校准证明：补录登记、左闭右开有效期/重叠校验、按号作废、可信证明匹配与有证读数复核
-│   ├── schemas.py    # 请求模型：事件、纠错（NewEventIn/CorrectionIn）、批量移交（TransferBatchIn）、整批对账（BatchReconciliationIn）、案卷（DossierIn）、复核（ReviewIn）、人员（PersonIn/AliasIn）、测温（TempConfigIn/TempReadingIn/CalibrationIn/CalibrationVoidIn）按类型必填校验
-│   ├── db.py         # SQLite 连接、建表与旧库迁移（批次/对账表、版本表与基线补建、案卷表、复核案/意见表、人员/别名表、测温配置/读数表）、IMMEDIATE 事务
+│   ├── dispositions.py # 可信测温异常处置：稳定异常标识与证据摘要、认可/排除处置（同摘要仅一次/单号幂等冲突）、惰性失效对账（anomaly_gone/evidence_changed）、当前异常查询与处置台账
+│   ├── schemas.py    # 请求模型：事件、纠错（NewEventIn/CorrectionIn）、批量移交（TransferBatchIn）、整批对账（BatchReconciliationIn）、案卷（DossierIn）、复核（ReviewIn）、人员（PersonIn/AliasIn）、测温（TempConfigIn/TempReadingIn/CalibrationIn/CalibrationVoidIn）、异常处置（AnomalyDispositionIn）按类型必填校验
+│   ├── db.py         # SQLite 连接、建表与旧库迁移（批次/对账表、版本表与基线补建、案卷表、复核案/意见表、人员/别名表、测温配置/读数表、异常处置表与同摘要有效唯一索引）、IMMEDIATE 事务
 │   ├── seed.py       # 演示数据初始化（幂等，含运输测温演示）
 │   └── config.py     # 环境变量配置
-├── examples/call_api.py   # 零依赖调用示例（含纠错、批量移交、整批对账签收、版本复核、案卷封存与双人复核、人员标识与复核回避、运输测温证据、校准证明与可信复核全流程）
+├── examples/call_api.py   # 零依赖调用示例（含纠错、批量移交、整批对账签收、版本复核、案卷封存与双人复核、人员标识与复核回避、运输测温证据、校准证明与可信复核、可信测温异常处置全流程）
 ├── tests/test_chain.py    # 既有规则端到端自测（42 项断言）
 ├── tests/test_corrections.py  # 纠错端到端自测（65 项断言，含并发）
 ├── tests/test_batches.py  # 批量移交端到端自测（83 项断言，含并发）
@@ -1305,6 +1462,7 @@ python -m tests.test_calibrations   # 设备校准证明与可信复核：58 项
 ├── tests/test_identities.py # 人员标识与复核回避端到端自测（67 项断言，含并发）
 ├── tests/test_temperature.py # 运输测温证据端到端自测（83 项断言，含并发）
 ├── tests/test_calibrations.py # 设备校准证明与可信复核端到端自测（58 项断言，含并发）
+├── tests/test_dispositions.py # 可信测温异常处置端到端自测（69 项断言，含失效对账与并发）
 ├── entrypoint.sh     # 容器入口：建表 → 演示数据 → 启动
 ├── Dockerfile
 ├── docker-compose.yml

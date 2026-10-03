@@ -249,6 +249,40 @@ CREATE INDEX IF NOT EXISTS idx_person_alias_person ON person_alias(person_pk);
 CREATE INDEX IF NOT EXISTS idx_temp_reading_sample_time ON temp_reading(sample_id, occurred_at, id);
 CREATE INDEX IF NOT EXISTS idx_temp_reading_device_time ON temp_reading(device_id, occurred_at, id);
 CREATE INDEX IF NOT EXISTS idx_calibration_device_active ON device_calibration(device_id, voided_at, valid_from, valid_to);
+
+-- 可信测温复核异常处置（运输质控）：质控人对可信测温复核当前仍存在的超温点/缺测区间
+-- 留存处置意见。每条处置记录提交时所见的稳定异常标识、证据摘要指纹与完整证据快照；
+-- 异常项以稳定标识（oor:<读数号> / gap:<前后有证读数号>）追踪，同一异常同一证据摘要
+-- 至多一条“有效”处置（部分唯一索引）。读数/证明补录或作废、保管链纠错使异常消失或
+-- 摘要变化后，原处置在查询/提交时惰性对账标记为失效（永久可查、不删除、不改写），
+-- 新摘要可重新处置。处置只写本表，不改动原始读数、校准证明、测温复核结论、保管链
+-- 版本与已封存案卷。
+CREATE TABLE IF NOT EXISTS temp_anomaly_disposition (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    disposition_no  TEXT NOT NULL UNIQUE,            -- 全局唯一处置单号（同号同内容幂等/异内容冲突）
+    sample_id       INTEGER NOT NULL REFERENCES sample(id),
+    sample_code     TEXT NOT NULL,                   -- 提交时样本编号（留痕）
+    anomaly_id      TEXT NOT NULL,                   -- 稳定异常标识：oor:<读数号> / gap:<前读数号>:<后读数号>
+    anomaly_type    TEXT NOT NULL CHECK (anomaly_type IN ('out_of_range_point','gap_interval')),
+    evidence_digest TEXT NOT NULL,                   -- 提交方所见证据摘要指纹（须与当前摘要一致）
+    decision        TEXT NOT NULL CHECK (decision IN ('acknowledged','excluded')), -- 认可异常 / 排除异常
+    reason          TEXT NOT NULL,                   -- 处置理由
+    handler         TEXT NOT NULL,                   -- 处置人
+    evidence_json   TEXT NOT NULL,                   -- 提交时所见证据完整快照（失效后仍可查）
+    request_hash    TEXT NOT NULL,                   -- 请求指纹（同处置单号幂等/冲突判定）
+    status          TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active','invalidated')),
+    invalidated_at  TEXT,                            -- 失效时间；NULL=有效
+    invalidate_reason TEXT CHECK (invalidate_reason IS NULL
+                    OR invalidate_reason IN ('anomaly_gone','evidence_changed')),
+    current_evidence_digest TEXT,                   -- evidence_changed 时重算的当前摘要（其余为 NULL）
+    created_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_anomaly_disp_sample ON temp_anomaly_disposition(sample_id, status, id);
+-- 同一异常项在同一证据摘要下至多一条有效处置；失效历史不受限（同一摘要重新出现可再处置）
+CREATE UNIQUE INDEX IF NOT EXISTS idx_anomaly_disp_active_once
+    ON temp_anomaly_disposition(anomaly_id, evidence_digest) WHERE status = 'active';
 """
 
 # 依赖迁移新列的索引（须在旧库补列迁移完成后再创建）
